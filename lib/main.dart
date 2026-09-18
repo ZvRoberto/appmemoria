@@ -12,8 +12,12 @@ class MiApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      debugShowCheckedModeBanner: false,
       title: 'Juego de Memoria',
-      theme: ThemeData(primarySwatch: Colors.deepPurple, useMaterial3: true),
+      theme: ThemeData(
+        primarySwatch: Colors.deepPurple,
+        useMaterial3: true,
+      ),
       home: const PantallaMemoria(),
     );
   }
@@ -27,12 +31,14 @@ class PantallaMemoria extends StatefulWidget {
 }
 
 class _PantallaMemoriaState extends State<PantallaMemoria> {
-  final List<String> _simbolos = ['🇬🇹', 'R', '%', '🦊', '|||', '🐼', '🦁', '🐷'];
+  final List<String> _simbolos = ['🇬🇹', 'R', '|||'];
+
   late List<String> _cartas;
   late List<bool> _volteadas;
   late List<bool> _emparejadas;
 
-  int? _primeraSeleccion;
+  List<int> _seleccionadas = [];
+
   int _intentos = 0;
   bool _bloqueado = false;
 
@@ -43,43 +49,70 @@ class _PantallaMemoriaState extends State<PantallaMemoria> {
   }
 
   void _iniciarJuego() {
-    _cartas = [..._simbolos, ..._simbolos];
+    // Cada símbolo aparece 3 veces
+    _cartas = [
+      ..._simbolos,
+      ..._simbolos,
+      ..._simbolos,
+    ];
+
     _cartas.shuffle(Random());
+
     _volteadas = List.filled(_cartas.length, false);
     _emparejadas = List.filled(_cartas.length, false);
-    _primeraSeleccion = null;
+
+    _seleccionadas = [];
     _intentos = 0;
     _bloqueado = false;
   }
 
   void _voltearCarta(int indice) {
-    if (_bloqueado || _volteadas[indice] || _emparejadas[indice]) return;
+    if (_bloqueado ||
+        _volteadas[indice] ||
+        _emparejadas[indice]) {
+      return;
+    }
 
-    setState(() => _volteadas[indice] = true);
+    setState(() {
+      _volteadas[indice] = true;
+      _seleccionadas.add(indice);
+    });
 
-    if (_primeraSeleccion == null) {
-      _primeraSeleccion = indice;
+    // Esperar hasta seleccionar 3 cartas
+    if (_seleccionadas.length < 3) {
       return;
     }
 
     _intentos++;
-    final primera = _primeraSeleccion!;
-    final segunda = indice;
+    _bloqueado = true;
 
-    if (_cartas[primera] == _cartas[segunda]) {
+    final primera = _seleccionadas[0];
+    final segunda = _seleccionadas[1];
+    final tercera = _seleccionadas[2];
+
+    // Comprobar si las 3 son iguales
+    if (_cartas[primera] == _cartas[segunda] &&
+        _cartas[segunda] == _cartas[tercera]) {
       setState(() {
         _emparejadas[primera] = true;
         _emparejadas[segunda] = true;
-        _primeraSeleccion = null;
+        _emparejadas[tercera] = true;
+
+        _seleccionadas = [];
+        _bloqueado = false;
       });
+
       _revisarVictoria();
     } else {
-      _bloqueado = true;
       Future.delayed(const Duration(milliseconds: 700), () {
+        if (!mounted) return;
+
         setState(() {
           _volteadas[primera] = false;
           _volteadas[segunda] = false;
-          _primeraSeleccion = null;
+          _volteadas[tercera] = false;
+
+          _seleccionadas = [];
           _bloqueado = false;
         });
       });
@@ -89,16 +122,23 @@ class _PantallaMemoriaState extends State<PantallaMemoria> {
   void _revisarVictoria() {
     if (_emparejadas.every((e) => e)) {
       Future.delayed(const Duration(milliseconds: 300), () {
+        if (!mounted) return;
+
         showDialog(
           context: context,
           builder: (_) => AlertDialog(
             title: const Text('¡Ganaste! 🎉'),
-            content: Text('Lo lograste en $_intentos intentos.'),
+            content: Text(
+              'Encontraste todos los grupos de 3 en $_intentos intentos.',
+            ),
             actions: [
               TextButton(
                 onPressed: () {
                   Navigator.pop(context);
-                  setState(_iniciarJuego);
+
+                  setState(() {
+                    _iniciarJuego();
+                  });
                 },
                 child: const Text('Jugar de nuevo'),
               ),
@@ -114,11 +154,15 @@ class _PantallaMemoriaState extends State<PantallaMemoria> {
     return Scaffold(
       backgroundColor: const Color(0xFFF3EEFF),
       appBar: AppBar(
-        title: const Text('Juego de Memoria'),
+        title: const Text('Memoria de 3'),
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 16),
-            child: Center(child: Text('Intentos: $_intentos')),
+            child: Center(
+              child: Text(
+                'Intentos: $_intentos',
+              ),
+            ),
           ),
         ],
       ),
@@ -126,27 +170,35 @@ class _PantallaMemoriaState extends State<PantallaMemoria> {
         padding: const EdgeInsets.all(16),
         child: GridView.builder(
           itemCount: _cartas.length,
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 4,
+          gridDelegate:
+              const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 3,
             crossAxisSpacing: 10,
             mainAxisSpacing: 10,
           ),
           itemBuilder: (context, indice) {
-            final mostrar = _volteadas[indice] || _emparejadas[indice];
+            final mostrar =
+                _volteadas[indice] || _emparejadas[indice];
+
             return GestureDetector(
               onTap: () => _voltearCarta(indice),
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 300),
                 decoration: BoxDecoration(
                   color: mostrar
-                      ? (_emparejadas[indice] ? Colors.green[200] : Colors.white)
+                      ? (_emparejadas[indice]
+                          ? Colors.green[200]
+                          : Colors.white)
                       : Colors.deepPurple,
                   borderRadius: BorderRadius.circular(12),
                 ),
                 alignment: Alignment.center,
                 child: Text(
                   mostrar ? _cartas[indice] : '❓',
-                  style: const TextStyle(fontSize: 28),
+                  style: const TextStyle(
+                    fontSize: 32,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
             );
@@ -154,7 +206,11 @@ class _PantallaMemoriaState extends State<PantallaMemoria> {
         ),
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () => setState(_iniciarJuego),
+        onPressed: () {
+          setState(() {
+            _iniciarJuego();
+          });
+        },
         child: const Icon(Icons.refresh),
       ),
     );
